@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">UpgradeTools</string>
+
+    <string name="usb">USB</string>
+    <string name="storage">手机存储</string>
+    <string name="sdcard">SD卡</string>
+    <string name="update">升级</string>
+
+</resources>
