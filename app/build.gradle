@@ -42,4 +42,5 @@ dependencies {
     implementation 'com.github.mjdev:libaums:0.5.5'
     implementation 'io.reactivex.rxjava2:rxjava:2.1.8'
     implementation 'com.github.mjdev:libaums:0.5.5'
+    implementation 'com.daimajia.numberprogressbar:library:1.4@aar'
 }

@@ -9,13 +9,13 @@ import java.util.Map;
 public interface OnCopyListener {
     /**
      * 开始
+     * @param total total
      * */
-    void onStart();
+    void onStart(long total);
     /**
      * 拷贝状态
-     * @param schedule 0-100 进度
      * */
-    void onProgressUpdate(String schedule);
+    void onProgressUpdate();
     /**
      * 完成
      * @param map map

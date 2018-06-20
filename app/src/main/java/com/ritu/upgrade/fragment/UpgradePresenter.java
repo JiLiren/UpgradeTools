@@ -131,9 +131,7 @@ public class UpgradePresenter {
      * 拷贝
      * @param root 来源文件
      * */
-    private void copyFile(File root, String toFile,long number,long cur,Map<String,String> map,
-            NumberFormat format,OnCopyListener listener) {
-        Log.e("1111111number","---------------------++++++++++++++++++++++"+number);
+    private void copyFile(File root, String toFile,long number,long cur,Map<String,String> map,OnCopyListener listener) {
         //要复制的文件目录
         File[] currentFiles;
         //如同判断SD卡是否存在或者文件是否存在
@@ -158,18 +156,15 @@ public class UpgradePresenter {
             if (currentFile.isDirectory()) {
                 copyFile(
                         new File(currentFile.getPath() + "/"), toFile + currentFile.getName() + "/",
-                        number,cur,map,format,listener
+                        number,cur,map,listener
                 );
                 //如果当前项为文件则进行文件拷贝
             } else {
                 exception = copySdcardFile(currentFile.getPath(), toFile + currentFile.getName());
                 result = exception == null ? "成功" : exception.getMessage();
                 map.put(currentFile.getPath(),result);
-                cur ++;
-                Log.e("1111111","---------------------"+cur);
-                schedule = format.format((float) cur / (float) number * 100);
                 if (listener != null){
-                    listener.onProgressUpdate(schedule);
+                    listener.onProgressUpdate();
                 }
             }
         }
@@ -239,12 +234,13 @@ public class UpgradePresenter {
         @Override
         protected Void doInBackground(Void... voids) {
             File file = new File(root);
-            long number = getFileNumber(file);
+            long total = getFileNumber(file);
             long curNumber = 0;
             Map<String,String> upgradeInformation = new HashMap<>();
-            NumberFormat numberFormat = NumberFormat.getInstance();
-            numberFormat.setMaximumFractionDigits(2);
-            copyFile(file,toFile,number,curNumber,upgradeInformation,numberFormat,listener);
+            if (listener != null){
+                listener.onStart(total);
+            }
+            copyFile(file,toFile,total,curNumber,upgradeInformation,listener);
             if (listener != null){
                 listener.onFinish(upgradeInformation);
             }

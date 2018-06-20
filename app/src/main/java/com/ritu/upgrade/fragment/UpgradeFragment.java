@@ -1,18 +1,17 @@
 package com.ritu.upgrade.fragment;
 
-import android.graphics.Paint;
+import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.v4.app.Fragment;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.style.ClickableSpan;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -20,27 +19,20 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.PopupMenu.OnMenuItemClickListener;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
 
+import com.daimajia.numberprogressbar.NumberProgressBar;
 import com.ritu.upgrade.R;
 import com.ritu.upgrade.adp.FileAdapter;
 import com.ritu.upgrade.adp.OnItemClickListener;
 import com.ritu.upgrade.event.OnCopyListener;
-import com.ritu.upgrade.tools.EncryptionTools;
-import com.ritu.upgrade.tools.FileUtils;
 import com.ritu.upgrade.tools.ScreenUtil;
 import com.ritu.upgrade.widget.ScrollLayout;
-import com.ritu.upgrade.widget.span.SpannablePair;
-import com.ritu.upgrade.widget.span.SpannableTextView;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -57,6 +49,10 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     private final int MSG_COPY_UPDATE = 0x0002;
     /** 拷贝结束 */
     private final int MSG_COPY_FINISH = 0x0003;
+    /** 校验开始 */
+    private final int MSG_CHECK_START = 0x0004;
+    /** 校验结束 */
+    private final int MSG_CHECK_FINISH = 0x0005;
 
     private boolean isUpgrade;
     private Button mUpgradeBtn;
@@ -66,6 +62,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     private ScrollLayout mScrollLayout;
     private ListView mListView;
     private LinearLayout mScrollContentLayout;
+    private NumberProgressBar mBar;
     private boolean isOTG;
 
     private File mConfigFile;
@@ -73,6 +70,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
 
     private PopupMenu mSourceMenu;
     private UpgradePresenter mPresenter;
+    private MainHandler mHandler;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
@@ -95,9 +93,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         mPathView = view.findViewById(R.id.tv_path);
         mScrollLayout = view.findViewById(R.id.scroll_down_layout);
         mScrollContentLayout = view.findViewById(R.id.layout_scroll_content);
-
-
-        mSourceView.getPaint().setFlags(Paint.UNDERLINE_TEXT_FLAG);
+        mBar = view.findViewById(R.id.ProgressBar);
 
         mScrollLayout.setMinOffset(0);
         if (getActivity() != null) {
@@ -112,6 +108,10 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         mScrollLayout.setToExit();
 
         mScrollLayout.getBackground().setAlpha(0);
+
+        setSource(getString(R.string.usb));
+
+        mHandler = new MainHandler(this);
     }
 
     private void initEvent(){
@@ -179,6 +179,10 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         }
     }
 
+    private void setSource(String source){
+        mSourceView.setText(source);
+    }
+
     @Override
     public void onChildScroll(int top) {
 
@@ -216,11 +220,11 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             setAdapter(file);
         }else if (file.isFile()){
             mConfigFile = file;
-            mSourceView.setText(getString(R.string.sdcard));
+            setSource(getString(R.string.sdcard));
             mScrollLayout.scrollToExit();
             mConfigMap = mPresenter.getConfigValue(mConfigFile);
+            mUpgradeBtn.setEnabled(false);
             copyFile();
-//            String md5 =FileUtils.getFileMD5(file);
         }
     }
 
@@ -241,11 +245,12 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     }
 
 
+    @SuppressLint("HandlerLeak")
     private class MainHandler extends Handler{
 
         WeakReference<UpgradeFragment> mFragment;
 
-        public MainHandler(UpgradeFragment fragment) {
+        MainHandler(UpgradeFragment fragment) {
             mFragment = new WeakReference<UpgradeFragment>(fragment);
         }
         @Override
@@ -256,11 +261,30 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             }
             switch (msg.what){
                 case MSG_COPY_START:
+                    mMsgView.setText("正在拷贝升级包...");
+                    mBar.setVisibility(View.VISIBLE);
                     break;
                 case MSG_COPY_UPDATE:
-
+                    float proportion = (float) msg.obj;
+                    mBar.setProgress((int) proportion);
                     break;
                 case MSG_COPY_FINISH:
+                    mMsgView.setText("正在校验升级包...");
+                    mBar.setVisibility(View.GONE);
+                    break;
+                case MSG_CHECK_START:
+                    mMsgView.setText("正在校验升级包...");
+                    break;
+                case MSG_CHECK_FINISH:
+                    boolean bug = (boolean) msg.obj;
+                    String text;
+                    if (bug){
+                        mUpgradeBtn.setEnabled(true);
+                        text = "导航新数据安装升级失败，请重启设备后重新升级！";
+                    }else {
+                        text = "导航新数据安装升级成功，请重启设备后重新升级！";
+                    }
+                    mMsgView.setText(text);
                     break;
                 default:break;
             }
@@ -272,35 +296,52 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
      * */
     private OnCopyListener mListener = new OnCopyListener() {
 
+        private long total;
+        private long count;
         @Override
-        public void onStart() {
-
+        public void onStart(long total) {
+            count = 0;
+            this.total = total;
+            Message message = new Message();
+            message.what = MSG_COPY_START;
+            mHandler.sendMessage(message);
         }
 
         @Override
-        public void onProgressUpdate(String schedule) {
-            Log.e("111","进度："+schedule);
+        public synchronized void onProgressUpdate() {
+            count ++;
+            float proportion = (float) count / (float) total * 100;
+            Message message = new Message();
+            message.what = MSG_COPY_UPDATE;
+            message.obj = proportion;
+            mHandler.sendMessage(message);
         }
 
         @Override
         public void onFinish(Map<String, String> map) {
-            int i = 1;
-            Log.e("111","finish");
+            Message message = new Message();
+            message.what = MSG_COPY_FINISH;
+            mHandler.sendMessage(message);
         }
 
         @Override
         public String onCheckStart() {
+            Message message = new Message();
+            message.what = MSG_CHECK_START;
+            mHandler.sendMessage(message);
             String path = mPresenter.getSDString() +
                     mConfigMap.get("filename").replace("\\","/") +
                     "NAVIGATION" + "/" +
                     mConfigMap.get("hashfile").replace("\\","/");
-
             return path;
         }
 
         @Override
         public void onCheckFinish(Map<String, String> map) {
-            int i = 1;
+            Message message = new Message();
+            message.what = MSG_CHECK_FINISH;
+            message.obj = map != null;
+            mHandler.sendMessage(message);
         }
     };
 
