@@ -1,6 +1,10 @@
 package com.ritu.upgrade.fragment;
 
 import android.annotation.SuppressLint;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -19,9 +23,16 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.PopupMenu.OnMenuItemClickListener;
+import android.widget.TableRow;
 import android.widget.TextView;
 
 import com.daimajia.numberprogressbar.NumberProgressBar;
+import com.github.mjdev.libaums.UsbMassStorageDevice;
+import com.github.mjdev.libaums.fs.FileSystem;
+import com.github.mjdev.libaums.fs.UsbFile;
+import com.github.mjdev.libaums.fs.fat32.FatFile;
+import com.github.mjdev.libaums.partition.Partition;
+import com.ritu.upgrade.MainActivity;
 import com.ritu.upgrade.R;
 import com.ritu.upgrade.adp.FileAdapter;
 import com.ritu.upgrade.adp.OnItemClickListener;
@@ -66,6 +77,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     private boolean isOTG;
 
     private File mConfigFile;
+    private UsbFile mUsbConfigFile;
     private Map<String,String> mConfigMap;
 
     private PopupMenu mSourceMenu;
@@ -117,17 +129,25 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     private void initEvent(){
         mUpgradeBtn.setOnClickListener(v -> {
             isUpgrade = true;
+            isOTG = true;
             mUpgradeBtn.setEnabled(false);
+            startUpdate();
         });
 
         mSourceView.setOnClickListener(v ->{
-//            String path = "/storage/emulated/0/MAP/Navigation/MapData/uidata/font/font24.gray4";
-//            File file = new File(path);
-//            String md = FileUtils.getFileMD51(file);
-//            Log.e("1111",md);
             showSwitchSource();
         });
 
+    }
+
+    private void startUpdate(){
+        mUsbConfigFile = mPresenter.getUsbConfigView();
+        if (mUsbConfigFile == null){
+            mUpgradeBtn.setEnabled(true);
+            return;
+        }
+        mConfigMap = mPresenter.getConfigValue(mUsbConfigFile);
+        copyFileUSB();
     }
 
     /**
@@ -220,6 +240,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             setAdapter(file);
         }else if (file.isFile()){
             mConfigFile = file;
+            isOTG = false;
             setSource(getString(R.string.sdcard));
             mScrollLayout.scrollToExit();
             mConfigMap = mPresenter.getConfigValue(mConfigFile);
@@ -236,6 +257,27 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         }
         String sourcePath = mPresenter.getSDString() + filePath + "NAVIGATION/";
 
+        String aimsFilePath = mConfigMap.get("path").replace("\\","/");
+        if (TextUtils.isEmpty(filePath)){
+            return;
+        }
+        String aimsPath = mPresenter.getSDString() + aimsFilePath;
+        mPresenter.copy(sourcePath,aimsPath,mListener);
+    }
+
+    private void copyFileUSB(){
+        String filePath = mConfigMap.get("filename").replace("\\","/");
+        UsbFile rootFile  = null;
+        if (mPresenter != null){
+            rootFile = mPresenter.getUsbRootFile();
+        }
+        if (TextUtils.isEmpty(filePath)){
+            return;
+        }
+        if (rootFile == null){
+            return;
+        }
+        String sourcePath = rootFile.getName() + filePath + "NAVIGATION/";
         String aimsFilePath = mConfigMap.get("path").replace("\\","/");
         if (TextUtils.isEmpty(filePath)){
             return;
@@ -344,5 +386,6 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             mHandler.sendMessage(message);
         }
     };
+
 
 }

@@ -1,18 +1,29 @@
 package com.ritu.upgrade.fragment;
 
 import android.annotation.SuppressLint;
+import android.app.PendingIntent;
+import android.content.Context;
+import android.content.Intent;
+import android.hardware.usb.UsbManager;
 import android.os.AsyncTask;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.widget.Toast;
 
 import com.github.mjdev.libaums.UsbMassStorageDevice;
 import com.github.mjdev.libaums.fs.FileSystem;
+import com.github.mjdev.libaums.fs.UsbFile;
+import com.github.mjdev.libaums.fs.UsbFileInputStream;
+import com.github.mjdev.libaums.partition.Partition;
+import com.ritu.upgrade.MainActivity;
 import com.ritu.upgrade.event.OnCopyListener;
 import com.ritu.upgrade.tools.EncryptionTools;
 import com.ritu.upgrade.tools.FileUtils;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -21,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,8 +46,10 @@ import java.util.Map;
 public class UpgradePresenter {
 
     private final String TAG = "升级工具";
+    private static final String ACTION_USB_PERMISSION = "com.androidinspain.otgviewer.USB_PERMISSION";
 
     private UpgradeView mView;
+    private UsbFile usbRoot;
 
     private String sdPath;
 
@@ -64,6 +78,13 @@ public class UpgradePresenter {
     }
 
     public String getSDString() {
+        if (sdPath == null){
+            boolean sdCardExist = Environment.getExternalStorageState().equals(android.os.Environment.MEDIA_MOUNTED);
+            if (sdCardExist) {
+                File sdDir = Environment.getExternalStorageDirectory();
+                sdPath = sdDir.getAbsolutePath();
+            }
+        }
         return sdPath;
     }
 
@@ -83,6 +104,44 @@ public class UpgradePresenter {
                 e.printStackTrace();
             }
         }
+    }
+
+    public UsbFile getUsbRootFile() {
+        return usbRoot;
+    }
+
+    public UsbFile getUsbConfigView(){
+        UsbManager usbManager = (UsbManager) mView.getContext().getSystemService(Context.USB_SERVICE);
+        //枚举设备
+        //获取存储设备
+        UsbMassStorageDevice[] storageDevices = UsbMassStorageDevice.getMassStorageDevices(mView.getContext());
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(mView.getContext(), 0, new Intent(ACTION_USB_PERMISSION), 0);
+        //可能有几个 一般只有一个 因为大部分手机只有1个otg插口
+        if (usbManager == null){
+            return null;
+        }
+        for (UsbMassStorageDevice device : storageDevices) {
+            //有就直接读取设备是否有权限
+            if (usbManager.hasPermission(device.getUsbDevice())) {
+                Partition partition = device.getPartitions().get(0);
+                FileSystem currentFs = partition.getFileSystem();
+                UsbFile root = currentFs.getRootDirectory();
+                try {
+                    for (UsbFile file:root.listFiles()){
+                        if ("myconfig.ini".equals(file.getName())){
+                            this.usbRoot = root;
+                            return file;
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                //没有就去发起意图申请该代码执行后，系统弹出一个对话框，
+                usbManager.requestPermission(device.getUsbDevice(), pendingIntent);
+            }
+        }
+        return null;
     }
 
     /**
@@ -115,6 +174,44 @@ public class UpgradePresenter {
                 Log.d("TestFile", "The File doesn't not exist.");
             } catch (IOException e) {
                 Log.d("TestFile", e.getMessage());
+            }
+        }
+        return map;
+    }
+
+    public Map<String,String> getConfigValue(UsbFile file){
+        Map<String,String> map = new HashMap<>();
+        if (file.isDirectory()){
+            Log.d("TestFile", "The File doesn't not exist.");
+        }else {
+            //读取文件内容
+            InputStream is = new UsbFileInputStream(file);
+            //读取秘钥中的数据进行匹配
+            StringBuilder sb = new StringBuilder();
+            BufferedReader bufferedReader = null;
+            try {
+                bufferedReader = new BufferedReader(new InputStreamReader(is));
+                String line;
+                String key;
+                String value;
+                //分行读取
+                while (( line = bufferedReader.readLine()) != null) {
+                    if (line.contains("=")){
+                        key = line.substring(0,line.indexOf("="));
+                        value = line.substring(line.indexOf("=")+1,line.length());
+                        map.put(key,value);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    if (bufferedReader != null) {
+                        bufferedReader.close();
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
         }
         return map;
@@ -252,6 +349,7 @@ public class UpgradePresenter {
             if (orgFile == null || !orgFile.exists()){
                 return null;
             }
+            writeFile(upgradeInformation);
             Map<String,String> checkMap = getCheckValue(orgFile);
             String oValue;
             String hValue;
@@ -267,6 +365,47 @@ public class UpgradePresenter {
             }
             listener.onCheckFinish(null);
             return null;
+        }
+
+        private void writeFile( Map<String,String> map ){
+            if (map == null){
+                return;
+            }
+            File file = makeFilePath();
+            if (file == null){
+                return;
+            }
+            StringBuilder buffer = new StringBuilder();
+            String value;
+            for (String key : map.keySet()) {
+                value = map.get(key);
+                buffer.append(key);
+                buffer.append(" = ");
+                buffer.append(value);
+                buffer.append("\r\n");
+                System.out.println(key + ":" + map.get(key));
+            }
+            String msg = buffer.toString();
+            try {
+                FileOutputStream outputStream = new FileOutputStream(file);
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
+                writer.write(msg);
+                writer.close();
+            } catch(Exception exception) {
+                Log.d(TAG,exception.getMessage());
+            }
+        }
+
+        private File makeFilePath(){
+            File file = new File(getSDString() + "/UpdateLog.txt");
+            if (!file.exists()){
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return file;
         }
 
         /**
