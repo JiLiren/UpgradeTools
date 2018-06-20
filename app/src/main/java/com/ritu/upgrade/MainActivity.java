@@ -56,8 +56,8 @@ public class MainActivity extends AppCompatActivity {
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         filter.addAction(ACTION_USB_PERMISSION);
-        registerReceiver(mUsbReceiver, filter);
-        checkUSBStatus();
+//        registerReceiver(mUsbReceiver, filter);
+//        checkUSBStatus();
     }
 
     private void checkUSBStatus() {

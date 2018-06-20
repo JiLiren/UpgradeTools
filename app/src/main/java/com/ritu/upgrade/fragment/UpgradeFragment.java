@@ -2,6 +2,8 @@ package com.ritu.upgrade.fragment;
 
 import android.graphics.Paint;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.v4.app.Fragment;
 import android.text.TextUtils;
@@ -24,6 +26,7 @@ import android.widget.TextView;
 import com.ritu.upgrade.R;
 import com.ritu.upgrade.adp.FileAdapter;
 import com.ritu.upgrade.adp.OnItemClickListener;
+import com.ritu.upgrade.event.OnCopyListener;
 import com.ritu.upgrade.tools.EncryptionTools;
 import com.ritu.upgrade.tools.FileUtils;
 import com.ritu.upgrade.tools.ScreenUtil;
@@ -32,11 +35,14 @@ import com.ritu.upgrade.widget.span.SpannablePair;
 import com.ritu.upgrade.widget.span.SpannableTextView;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -45,8 +51,14 @@ import java.util.List;
 public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemClickListener,
         ScrollLayout.OnScrollChangedListener,OnItemClickListener{
 
-    private boolean isUpgrade;
+    /** 开始拷贝 */
+    private final int MSG_COPY_START = 0x0001;
+    /** 拷贝进度 */
+    private final int MSG_COPY_UPDATE = 0x0002;
+    /** 拷贝结束 */
+    private final int MSG_COPY_FINISH = 0x0003;
 
+    private boolean isUpgrade;
     private Button mUpgradeBtn;
     private TextView mSourceView;
     private TextView mMsgView;
@@ -57,6 +69,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     private boolean isOTG;
 
     private File mConfigFile;
+    private Map<String,String> mConfigMap;
 
     private PopupMenu mSourceMenu;
     private UpgradePresenter mPresenter;
@@ -108,6 +121,10 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         });
 
         mSourceView.setOnClickListener(v ->{
+//            String path = "/storage/emulated/0/MAP/Navigation/MapData/uidata/font/font24.gray4";
+//            File file = new File(path);
+//            String md = FileUtils.getFileMD51(file);
+//            Log.e("1111",md);
             showSwitchSource();
         });
 
@@ -201,8 +218,90 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             mConfigFile = file;
             mSourceView.setText(getString(R.string.sdcard));
             mScrollLayout.scrollToExit();
+            mConfigMap = mPresenter.getConfigValue(mConfigFile);
+            copyFile();
 //            String md5 =FileUtils.getFileMD5(file);
         }
     }
+
+    private void copyFile(){
+        String filePath = mConfigMap.get("filename").replace("\\","/");
+
+        if (TextUtils.isEmpty(filePath)){
+            return;
+        }
+        String sourcePath = mPresenter.getSDString() + filePath + "NAVIGATION/";
+
+        String aimsFilePath = mConfigMap.get("path").replace("\\","/");
+        if (TextUtils.isEmpty(filePath)){
+            return;
+        }
+        String aimsPath = mPresenter.getSDString() + aimsFilePath;
+        mPresenter.copy(sourcePath,aimsPath,mListener);
+    }
+
+
+    private class MainHandler extends Handler{
+
+        WeakReference<UpgradeFragment> mFragment;
+
+        public MainHandler(UpgradeFragment fragment) {
+            mFragment = new WeakReference<UpgradeFragment>(fragment);
+        }
+        @Override
+        public void handleMessage(Message msg) {
+            UpgradeFragment fragment = mFragment.get();
+            if (fragment == null){
+                return;
+            }
+            switch (msg.what){
+                case MSG_COPY_START:
+                    break;
+                case MSG_COPY_UPDATE:
+
+                    break;
+                case MSG_COPY_FINISH:
+                    break;
+                default:break;
+            }
+        }
+    }
+
+    /**
+     * 拷贝接口
+     * */
+    private OnCopyListener mListener = new OnCopyListener() {
+
+        @Override
+        public void onStart() {
+
+        }
+
+        @Override
+        public void onProgressUpdate(String schedule) {
+            Log.e("111","进度："+schedule);
+        }
+
+        @Override
+        public void onFinish(Map<String, String> map) {
+            int i = 1;
+            Log.e("111","finish");
+        }
+
+        @Override
+        public String onCheckStart() {
+            String path = mPresenter.getSDString() +
+                    mConfigMap.get("filename").replace("\\","/") +
+                    "NAVIGATION" + "/" +
+                    mConfigMap.get("hashfile").replace("\\","/");
+
+            return path;
+        }
+
+        @Override
+        public void onCheckFinish(Map<String, String> map) {
+            int i = 1;
+        }
+    };
 
 }
