@@ -74,6 +74,13 @@ public class MainActivity extends AppCompatActivity implements IVIew {
         iFilter.addAction(Intent.ACTION_MEDIA_REMOVED);
         iFilter.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
         iFilter.addDataScheme("file");
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
+
+        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        registerReceiver(mUsbReceiver, filter);
+
         registerReceiver(mUsbReceiver, iFilter);
     }
 
@@ -96,17 +103,28 @@ public class MainActivity extends AppCompatActivity implements IVIew {
     private BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            checkUSBStatus();
-            UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 
-            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                if (device != null) {
-                    mUsbManager.hasPermission(device);
-                }
-            }
+                    String action = intent.getAction(); Log.e( "action", action);
+                    if (ACTION_USB_PERMISSION.equals(action)) {
+
+                    }else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+//                        askforpermission();
+                    } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
+
+                    }
         }
     };
+
+//            checkUSBStatus();
+//            UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+//
+//            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+//                if (device != null) {
+//                    mUsbManager.hasPermission(device);
+//                }
+//            }
+//        }
+//    };
 
     @Override
     protected void onDestroy() {

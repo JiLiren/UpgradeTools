@@ -663,19 +663,23 @@ public class UpgradePresenter {
                             listener.onCheckFinish(upgradeInformation);
                             return null;
                         }else {
-                            boolean b = true;
-                            for (String sk:hashRoot.keySet()){
-                                if (sk.equalsIgnoreCase(key1)){
-                                    oValue = checkMap.get(key1);
-                                    hValue = hashRoot.get(key1);
-                                    if (!oValue.equals(hValue)){
-                                        b = false;
+                            try {
+                                boolean b = true;
+                                for (String sk:hashRoot.keySet()){
+                                    if (sk.equalsIgnoreCase(key1)){
+                                        hValue = checkMap.get(key1);
+                                        if (!oValue.equals(hValue)){
+                                            b = false;
+                                        }
                                     }
                                 }
-                            }
-                            if (b){
-                                listener.onCheckFinish(upgradeInformation);
-                                return null;
+
+                                if (b){
+                                    listener.onCheckFinish(upgradeInformation);
+                                    return null;
+                                }
+                            }catch (Exception e){
+                                mView.onToast(e.getMessage());
                             }
                         }
                     }else {
@@ -906,15 +910,6 @@ public class UpgradePresenter {
                         }
                     }
                 }
-//            }
-//            String te = usbRoot.getName();
-//            Log.e("11111",te);
-//            mView.onToast(te+"111");
-//            Toast.makeText();
-//
-//            for(UsbFile file: listFiles()) {
-//                if(file.getName().equals(name))
-//                    return file;
 //            }
             return null;
         }
