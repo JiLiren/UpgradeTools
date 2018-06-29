@@ -1,17 +1,12 @@
 package com.ritu.upgrade.fragment;
 
 import android.annotation.SuppressLint;
-import android.app.PendingIntent;
-import android.content.Context;
-import android.content.Intent;
-import android.hardware.usb.UsbManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.support.annotation.NonNull;
 import android.support.v4.app.Fragment;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.MenuInflater;
@@ -23,16 +18,12 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.PopupMenu.OnMenuItemClickListener;
-import android.widget.TableRow;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.daimajia.numberprogressbar.NumberProgressBar;
-import com.github.mjdev.libaums.UsbMassStorageDevice;
 import com.github.mjdev.libaums.fs.FileSystem;
 import com.github.mjdev.libaums.fs.UsbFile;
-import com.github.mjdev.libaums.fs.fat32.FatFile;
-import com.github.mjdev.libaums.partition.Partition;
-import com.ritu.upgrade.MainActivity;
 import com.ritu.upgrade.R;
 import com.ritu.upgrade.adp.FileAdapter;
 import com.ritu.upgrade.adp.OnItemClickListener;
@@ -64,6 +55,8 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     private final int MSG_CHECK_START = 0x0004;
     /** 校验结束 */
     private final int MSG_CHECK_FINISH = 0x0005;
+    /** 吐司 */
+    private final int MSG_TOAST= 0x0006;
 
     private boolean isUpgrade;
     private Button mUpgradeBtn;
@@ -128,9 +121,10 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
 
     private void initEvent(){
         mUpgradeBtn.setOnClickListener(v -> {
+//            test();
             isUpgrade = true;
             isOTG = true;
-            mUpgradeBtn.setEnabled(false);
+//            mUpgradeBtn.setEnabled(false);
             startUpdate();
         });
 
@@ -255,7 +249,7 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         if (TextUtils.isEmpty(filePath)){
             return;
         }
-        String sourcePath = mPresenter.getSDString() + filePath + "NAVIGATION/";
+        String sourcePath = mPresenter.getSDString() + filePath + "RtNavi/";
 
         String aimsFilePath = mConfigMap.get("path").replace("\\","/");
         if (TextUtils.isEmpty(filePath)){
@@ -266,6 +260,9 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     }
 
     private void copyFileUSB(){
+//        mSelectedDevice.init();
+//        FileSystem fs = mSelectedDevice.getPartitions().get(0).getFileSystem();
+//        UsbFile root = fs.getRootDirectory();
         String filePath = mConfigMap.get("filename").replace("\\","/");
         UsbFile rootFile  = null;
         if (mPresenter != null){
@@ -277,13 +274,21 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         if (rootFile == null){
             return;
         }
-        String sourcePath = rootFile.getName() + filePath + "NAVIGATION/";
+        String sourcePath = filePath + "RtNavi";
         String aimsFilePath = mConfigMap.get("path").replace("\\","/");
         if (TextUtils.isEmpty(filePath)){
             return;
         }
         String aimsPath = mPresenter.getSDString() + aimsFilePath;
-        mPresenter.copy(sourcePath,aimsPath,mListener);
+        mPresenter.copyUSB(sourcePath,aimsPath,mListener);
+    }
+
+    @Override
+    public void onToast(String msg) {
+        Message message = new Message();
+        message.what = MSG_TOAST;
+        message.obj = msg;
+        mHandler.sendMessage(message);
     }
 
 
@@ -327,6 +332,12 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
                         text = "导航新数据安装升级成功，请重启设备后重新升级！";
                     }
                     mMsgView.setText(text);
+                    break;
+                case MSG_TOAST:
+                    String aText = (String) msg.obj;
+                    if (aText != null) {
+                        Toast.makeText(getContext(), aText,Toast.LENGTH_SHORT).show();
+                    }
                     break;
                 default:break;
             }
@@ -373,9 +384,17 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             mHandler.sendMessage(message);
             String path = mPresenter.getSDString() +
                     mConfigMap.get("filename").replace("\\","/") +
-                    "NAVIGATION" + "/" +
+                    "RtNavi" + "/" +
                     mConfigMap.get("hashfile").replace("\\","/");
             return path;
+        }
+
+        @Override
+        public String onCheckUSBStart() {
+            Message message = new Message();
+            message.what = MSG_CHECK_START;
+            mHandler.sendMessage(message);
+            return mConfigMap.get("hashfile");
         }
 
         @Override
@@ -385,7 +404,31 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             message.obj = map != null;
             mHandler.sendMessage(message);
         }
+
+        @Override
+        public void onToast(String msg) {
+            Message message = new Message();
+            message.what = MSG_TOAST;
+            message.obj = msg;
+            mHandler.sendMessage(message);
+        }
     };
 
+    public void test() {
+        File storage = new File("/storage");
+        File[] files = storage.listFiles();
+        for (final File file : files) {
+            if (file.canRead()) {
+                if (!file.getName().equals(Environment.getExternalStorageDirectory().getName())) {
+                    //满足该条件的文件夹就是u盘在手机上的目录 }
+                    for(File f :file.listFiles()){
+                        if ("myconfig.ini".equals(f.getName())) {
+                            int i = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 }

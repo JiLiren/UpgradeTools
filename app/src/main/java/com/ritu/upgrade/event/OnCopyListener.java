@@ -26,9 +26,13 @@ public interface OnCopyListener {
      * @return 校验文件路径
      * */
     String onCheckStart();
+
+    String onCheckUSBStart();
     /**
      * 完成
      * @param map map
      * */
     void onCheckFinish(Map<String,String> map);
+
+    void onToast(String msg);
 }

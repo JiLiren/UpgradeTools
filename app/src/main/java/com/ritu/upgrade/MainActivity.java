@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
+import android.os.Environment;
+import android.os.PowerManager;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -22,6 +24,7 @@ import com.ritu.upgrade.fragment.UpgradeFragment;
 import com.ritu.upgrade.tools.ActivityUtils;
 import com.ritu.upgrade.tools.FileUtils;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -30,7 +33,7 @@ import java.util.List;
 /**
  * @author ritu on 14-Jun-18
  * */
-public class MainActivity extends AppCompatActivity implements IVIew{
+public class MainActivity extends AppCompatActivity implements IVIew {
 
     private final String TAG = "升级工具";
 
@@ -52,6 +55,12 @@ public class MainActivity extends AppCompatActivity implements IVIew{
         mPermissionIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
         mUsbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
         mDetectedDevices = new ArrayList<>();
+
+
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        PowerManager.WakeLock mWakeLock = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "My Tag");
+        mWakeLock.acquire();
+        mWakeLock.release();
         ActivityUtils.addFragmentToActivity(getSupportFragmentManager(),
                 mLauncherFragment, R.id.contentFrame);
     }
@@ -64,7 +73,8 @@ public class MainActivity extends AppCompatActivity implements IVIew{
         iFilter.addAction(Intent.ACTION_MEDIA_MOUNTED);
         iFilter.addAction(Intent.ACTION_MEDIA_REMOVED);
         iFilter.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
-        iFilter.addDataScheme("file"); registerReceiver(mUsbReceiver, iFilter);
+        iFilter.addDataScheme("file");
+        registerReceiver(mUsbReceiver, iFilter);
     }
 
     private void checkUSBStatus() {
@@ -87,50 +97,14 @@ public class MainActivity extends AppCompatActivity implements IVIew{
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            switch (action) {
-                //接受到自定义广播
-                case ACTION_USB_PERMISSION:
-                    synchronized (this) {
-                        UsbDevice usbDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                        //允许权限申请
-                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                            if (usbDevice != null) {
-                                MainActivity.this.usbDevice = usbDevice;
-                                //Do something\
+            checkUSBStatus();
+            UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
 
-
-                            }
-                        } else {
-                            Toast.makeText(context,"没有接受权限申请，无法工作",Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                    break;
-                //接收到存储设备插入广播
-                case UsbManager.ACTION_USB_DEVICE_ATTACHED:
-                    UsbDevice device_add = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                    if (device_add != null) {
-//                        TShow("接收到存储设备插入广播");
-                    }
-                    break;
-                //接收到存储设备拔出广播
-                case UsbManager.ACTION_USB_DEVICE_DETACHED:
-                    UsbDevice device_remove = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                    if (device_remove != null) {
-                        Toast.makeText(context,"USB设备被拔出",Toast.LENGTH_SHORT).show();
-                        //拔出或者碎片 Activity销毁时 释放引用
-                        //device.close();
-                    }
-                    break;
-                default:break;
+            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                if (device != null) {
+                    mUsbManager.hasPermission(device);
+                }
             }
-
-//            String action = intent.getAction();
-//            if (action.equals(Intent.ACTION_MEDIA_EJECT)) {
-//                //USB设备移除，更新UI
-//            } else if (action.equals(Intent.ACTION_MEDIA_MOUNTED)) {
-//                //USB设备挂载，更新UI
-//                // String usbPath = intent.getDataString();（usb在手机上的路径）
-//            }
         }
     };
 
@@ -144,5 +118,6 @@ public class MainActivity extends AppCompatActivity implements IVIew{
     public UsbDevice getUsbDevice() {
         return usbDevice;
     }
+
 
 }
