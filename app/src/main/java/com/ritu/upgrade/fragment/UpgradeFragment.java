@@ -87,6 +87,12 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         super.onViewCreated(view, savedInstanceState);
         mPresenter = new UpgradePresenter(this);
         intiView(view);
+        view.findViewById(R.id.bt).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                getActivity().finish();
+            }
+        });
         initEvent();
     }
 
@@ -124,14 +130,27 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
 //            test();
             isUpgrade = true;
             isOTG = true;
-//            mUpgradeBtn.setEnabled(false);
-            startUpdate();
+            mUpgradeBtn.setEnabled(false);
+//            mPresenter.getUDisk();
+            startUdiskUpdate();
         });
 
         mSourceView.setOnClickListener(v ->{
             showSwitchSource();
         });
 
+    }
+
+    private void startUdiskUpdate(){
+        mConfigFile = mPresenter.getUDConfigView();
+        if (mConfigFile == null){
+            mUpgradeBtn.setEnabled(true);
+            onToast("没有配置文件");
+            return;
+        }
+        mConfigMap = mPresenter.getConfigValue(mConfigFile);
+        onToast("拿到配置文件");
+        copyUDFile();
     }
 
     private void startUpdate(){
@@ -208,10 +227,10 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
             List<File> listSource = Arrays.asList(file.listFiles());
             List<File> list = new ArrayList<>();
             boolean haseParent = false;
-            if (!mPresenter.getSDString().equals(file.getAbsolutePath())){
+//            if (!mPresenter.getSDString().equals(file.getAbsolutePath())){
                 list.add(file.getParentFile());
-                haseParent = true;
-            }
+//                haseParent = true;
+//            }
             for (File bean:listSource){
                 if (!bean.isFile()){
                     list.add(bean);
@@ -243,6 +262,22 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         }
     }
 
+    private void copyUDFile(){
+        String filePath = mConfigMap.get("filename").replace("\\","/");
+
+        if (TextUtils.isEmpty(filePath)){
+            return;
+        }
+        String sourcePath = mPresenter.getUdPath() + filePath + "RtNavi/";
+
+        String aimsFilePath = mConfigMap.get("path").replace("\\","/");
+        if (TextUtils.isEmpty(filePath)){
+            return;
+        }
+        String aimsPath = mPresenter.getUdPath() + aimsFilePath;
+        mPresenter.copyUD(sourcePath,aimsPath,mListener);
+    }
+
     private void copyFile(){
         String filePath = mConfigMap.get("filename").replace("\\","/");
 
@@ -260,9 +295,6 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
     }
 
     private void copyFileUSB(){
-//        mSelectedDevice.init();
-//        FileSystem fs = mSelectedDevice.getPartitions().get(0).getFileSystem();
-//        UsbFile root = fs.getRootDirectory();
         String filePath = mConfigMap.get("filename").replace("\\","/");
         UsbFile rootFile  = null;
         if (mPresenter != null){
@@ -398,6 +430,18 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
         }
 
         @Override
+        public String onCheckUDStart() {
+            Message message = new Message();
+            message.what = MSG_CHECK_START;
+            mHandler.sendMessage(message);
+            String path = mPresenter.getUdPath() +
+                    mConfigMap.get("filename").replace("\\","/") +
+                    "RtNavi" + "/" +
+                    mConfigMap.get("hashfile").replace("\\","/");
+            return path;
+        }
+
+        @Override
         public void onCheckFinish(Map<String, String> map) {
             Message message = new Message();
             message.what = MSG_CHECK_FINISH;
@@ -429,6 +473,27 @@ public class UpgradeFragment extends Fragment implements UpgradeView,OnMenuItemC
                 }
             }
         }
+    }
+
+    private void onT(){
+        File file = new File("/storage/udisk/");
+        File[] files = file.listFiles();
+        for (File ff : files){
+           if ("myconfig.ini".equals(ff.getName())) {
+               onToast("这个SB");
+           }
+        }
+//        ifor (File f: files){
+//            if ("udisk".equals(f.getName())){
+//                File fil = f;
+//                for (File ff : fil.listFiles()){
+//                    onToast(ff.getName());
+//                    if ("myconfig.ini".equals(ff.getName())){
+//                        onToast("这个SB");
+//                    }
+//                }
+//            }
+//        }
     }
 
 }

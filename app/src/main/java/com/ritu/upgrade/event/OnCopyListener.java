@@ -28,6 +28,8 @@ public interface OnCopyListener {
     String onCheckStart();
 
     String onCheckUSBStart();
+
+    String onCheckUDStart();
     /**
      * 完成
      * @param map map

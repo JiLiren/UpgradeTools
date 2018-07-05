@@ -68,20 +68,20 @@ public class MainActivity extends AppCompatActivity implements IVIew {
     @Override
     protected void onResume() {
         super.onResume();
-        IntentFilter iFilter = new IntentFilter();
-        iFilter.addAction(Intent.ACTION_MEDIA_EJECT);
-        iFilter.addAction(Intent.ACTION_MEDIA_MOUNTED);
-        iFilter.addAction(Intent.ACTION_MEDIA_REMOVED);
-        iFilter.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
-        iFilter.addDataScheme("file");
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
+//        IntentFilter iFilter = new IntentFilter();
+//        iFilter.addAction(Intent.ACTION_MEDIA_EJECT);
+//        iFilter.addAction(Intent.ACTION_MEDIA_MOUNTED);
+//        iFilter.addAction(Intent.ACTION_MEDIA_REMOVED);
+//        iFilter.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
+//        iFilter.addDataScheme("file");
+//        PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, new Intent(ACTION_USB_PERMISSION), 0);
 
         IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
         registerReceiver(mUsbReceiver, filter);
 
-        registerReceiver(mUsbReceiver, iFilter);
+//        registerReceiver(mUsbReceiver, iFilter);
     }
 
     private void checkUSBStatus() {
@@ -106,7 +106,7 @@ public class MainActivity extends AppCompatActivity implements IVIew {
 
                     String action = intent.getAction(); Log.e( "action", action);
                     if (ACTION_USB_PERMISSION.equals(action)) {
-
+                        Toast.makeText(MainActivity.this,"权限申请",Toast.LENGTH_SHORT).show();
                     }else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
 //                        askforpermission();
                     } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {

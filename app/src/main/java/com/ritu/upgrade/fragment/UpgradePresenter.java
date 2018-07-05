@@ -47,6 +47,8 @@ public class UpgradePresenter {
 
     private String sdPath;
 
+    private String udPath = "/storage/udisk/";
+
     UpgradePresenter(UpgradeView mView) {
         this.mView = mView;
     }
@@ -69,6 +71,10 @@ public class UpgradePresenter {
             return null;
         }
         return sdDir;
+    }
+
+    public String getUdPath(){
+        return udPath;
     }
 
     public String getSDString() {
@@ -124,8 +130,8 @@ public class UpgradePresenter {
             return null;
         }
         try {
-            if (usbManager.hasPermission(storageDevice.getUsbDevice())) {
 //            if (usbManager.hasPermission(storageDevice.getUsbDevice())) {
+            if (usbManager.hasPermission(storageDevice.getUsbDevice())) {
                 storageDevice.init();
                 FileSystem fs = storageDevice.getPartitions().get(0).getFileSystem();
                 mView.onToast("拿到U盘");
@@ -142,6 +148,21 @@ public class UpgradePresenter {
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }
+        return null;
+    }
+
+
+    public File getUDConfigView(){
+        File file = new File("/storage/udisk/");
+        if (!file.exists()){
+            mView.onToast("U盘");
+            return null;
+        }
+        for (File ff : file.listFiles()){
+            if ("myconfig.ini".equals(ff.getName())){
+                return ff;
+            }
         }
         return null;
     }
@@ -226,6 +247,10 @@ public class UpgradePresenter {
         new CopyTask(root,toFile,listener).execute();
     }
 
+    public void copyUD(String root, String toFile, OnCopyListener listener){
+        new CopyUDTask(root,toFile,listener).execute();
+    }
+
     /**
      * 拷贝
      * */
@@ -277,6 +302,54 @@ public class UpgradePresenter {
         }
     }
 
+
+
+    /**
+     * 拷贝
+     * @param root 来源文件
+     * */
+    private void copyUDFile(File root, String toFile,long number,long cur,Map<String,String> map,
+                             Map<String,String> hashRoot,OnCopyListener listener) throws IOException {
+
+
+        //要复制的文件目录
+        File[] currentFiles;
+        //如同判断SD卡是否存在或者文件是否存在
+        //如果不存在则 return出去
+        if(!root.exists()) {
+            listener.onToast(root.getName()+"root文件不存在");
+            return;
+        }
+        //如果存在则获取当前目录下的全部文件 填充数组
+        currentFiles = root.listFiles();
+        //目标目录
+        File targetDir = new File(toFile);
+        //创建目录
+        if(!targetDir.exists()) {
+            targetDir.mkdirs();
+        }
+        Exception exception;
+        String result;
+        String schedule;
+        //遍历要复制该目录下的全部文件
+        for (File currentFile : currentFiles) {
+            //如果当前项为子目录 进行递归
+            if (currentFile.isDirectory()) {
+                copyUDFile(new File(currentFile.getPath() + "/"),
+                        toFile + currentFile.getName() + "/",
+                        number,cur,map,hashRoot,listener
+                );
+                //如果当前项为文件则进行文件拷贝
+            } else {
+                exception = copyUDSdcardFile(currentFile.getPath(), toFile + currentFile.getName(),hashRoot,listener);
+                result = exception == null ? "成功" : exception.getMessage();
+                map.put(currentFile.getPath(),result);
+                if (listener != null){
+                    listener.onProgressUpdate();
+                }
+            }
+        }
+    }
     /**
      * 拷贝
      * @param root 来源文件
@@ -356,6 +429,32 @@ public class UpgradePresenter {
         }
     }
 
+    private Exception copyUDSdcardFile(String fromFile, String toFile,Map<String,String> hashRoot,
+                                       OnCopyListener listener) {
+        try {
+            InputStream fosfrom = new FileInputStream(fromFile);
+            OutputStream fosto = new FileOutputStream(toFile);
+            byte bt[] = new byte[1024];
+            int c;
+            while ((c = fosfrom.read(bt)) > 0) {
+                fosto.write(bt, 0, c);
+            }
+            fosfrom.close();
+            fosto.close();
+            String hashValue = FileUtils.getFileMD5(new File(toFile));
+            int s = toFile.indexOf("RtNavi") + 6;
+            int e = toFile.length();
+            String key= toFile.substring(s,e);
+            key = key.replaceAll("/","\\\\");
+//            key = key.replace(".","_");
+            hashRoot.put(key,hashValue);
+            return null;
+        } catch (Exception ex) {
+            listener.onToast(ex.getMessage()+"拷贝异常"+toFile);
+            return ex;
+        }
+    }
+
     private Exception copySdcardFile(UsbFile fromFile, String toFile, Map<String,String> hashRoot,
                                      OnCopyListener listener) {
         try {
@@ -428,177 +527,7 @@ public class UpgradePresenter {
     /**
      * 复制 校验 等等一系列任务的 线程池
      * */
-    @SuppressLint("StaticFieldLeak")
-    private class CopyTask extends AsyncTask<Void, Integer, Void> {
-        private String root;
-        private String toFile;
-        private OnCopyListener listener;
 
-        CopyTask(String root, String toFile, OnCopyListener listener) {
-            this.root = root;
-            this.toFile = toFile;
-            this.listener = listener;
-        }
-
-        @Override
-        protected Void doInBackground(Void... voids) {
-            File file = new File(root);
-            long total = getFileNumber(file);
-            long curNumber = 0;
-            Map<String,String> upgradeInformation = new HashMap<>();
-            if (listener != null){
-                listener.onStart(total);
-            }
-            copyFile(file,toFile,total,curNumber,upgradeInformation,listener);
-            if (listener != null){
-                listener.onFinish(upgradeInformation);
-            }
-            Map<String,String> hashMap = getCheckHash(file);
-            File orgFile = null;
-            if (listener != null){
-                orgFile = new File(listener.onCheckStart());
-            }
-            if (orgFile == null || !orgFile.exists()){
-                return null;
-            }
-            writeFile(upgradeInformation);
-            Map<String,String> checkMap = getCheckValue(orgFile);
-            String oValue;
-            String hValue;
-            for (String key : checkMap.keySet()) {
-                oValue = checkMap.get(key);
-                hValue = hashMap.get(key);
-                if (oValue != null){
-                    if (!oValue.equals(hValue)){
-                        listener.onCheckFinish(upgradeInformation);
-                            return null;
-                    }
-                }else {
-                    boolean b = true;
-                    for (String sk:hashMap.keySet()){
-                        if (sk.equalsIgnoreCase(key)){
-                            oValue = checkMap.get(key);
-                            hValue = hashMap.get(key);
-                            if (!oValue.equals(hValue)){
-                                b = false;
-                            }
-                        }
-                    }
-                    if (b){
-                        listener.onCheckFinish(upgradeInformation);
-                        return null;
-                    }
-                }
-            }
-            listener.onCheckFinish(null);
-            return null;
-        }
-
-        private void writeFile( Map<String,String> map ){
-            if (map == null){
-                return;
-            }
-            File file = makeFilePath();
-            if (file == null){
-                return;
-            }
-            StringBuilder buffer = new StringBuilder();
-            String value;
-            for (String key : map.keySet()) {
-                value = map.get(key);
-                buffer.append(key);
-                buffer.append(" = ");
-                buffer.append(value);
-                buffer.append("\r\n");
-                System.out.println(key + ":" + map.get(key));
-            }
-            String msg = buffer.toString();
-            try {
-                FileOutputStream outputStream = new FileOutputStream(file);
-                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
-                writer.write(msg);
-                writer.close();
-            } catch(Exception exception) {
-                Log.d(TAG,exception.getMessage());
-            }
-        }
-
-        private File makeFilePath(){
-            File file = new File(getSDString() + "/UpdateLog.txt");
-            if (!file.exists()){
-                try {
-                    file.createNewFile();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            return file;
-        }
-
-        /**
-         * MD5校验
-         * 获取复制后文件的MD5 值
-         * @param file file
-         * */
-        private Map<String,String> getCheckHash(File file ){
-            Map<String,String> hashMap = new HashMap<>();
-            if (file.isDirectory()){
-                for (File childFile : file.listFiles()){
-                    hashMap.putAll(getCheckHash(childFile));
-                }
-            }else if (file.isFile()){
-                String path = file.getAbsolutePath();
-                String newPath = path.replaceAll(root,toFile);
-                String key = path.replaceAll(root,"/");
-                String value ;
-                File f = new File(newPath);
-                if (!f.exists()){
-                    value = "";
-                }else {
-                    value = FileUtils.getFileMD5(file);
-                }
-                hashMap.put(key,value);
-            }
-            return hashMap;
-        }
-
-        /**
-         * 获取配置的键值对
-         * */
-        private Map<String,String> getCheckValue(File file){
-            Map<String,String> map = new HashMap<>();
-            if (file.isDirectory()) {
-                Log.d("TestFile", "The File doesn't not exist.");
-            } else {
-                try {
-                    InputStream instream = new FileInputStream(file);
-                    if (instream != null) {
-                        InputStreamReader inputreader = new InputStreamReader(instream);
-                        BufferedReader buffreader = new BufferedReader(inputreader);
-                        String line;
-                        String key;
-                        String key1;
-                        String value;
-                        //分行读取
-                        while (( line = buffreader.readLine()) != null) {
-                            if (line.contains(",")){
-                                key1 = line.substring(0,line.indexOf(","));
-                                key = key1.replace("\\","/");
-                                value = line.substring(line.indexOf(",")+1,line.length());
-                                map.put(key,value);
-                            }
-                        }
-                        instream.close();
-                    }
-                } catch (java.io.FileNotFoundException e) {
-                    Log.d("TestFile", "The File doesn't not exist.");
-                } catch (IOException e) {
-                    Log.d("TestFile", e.getMessage());
-                }
-            }
-            return map;
-        }
-    }
 
     @SuppressLint("StaticFieldLeak")
     private class CopyUsbTask extends AsyncTask<Void, Integer, Void> {
@@ -914,5 +843,485 @@ public class UpgradePresenter {
             return null;
         }
     }
+
+    @SuppressLint("StaticFieldLeak")
+    private class CopyTask extends AsyncTask<Void, Integer, Void> {
+        private String root;
+        private String toFile;
+        private OnCopyListener listener;
+
+        CopyTask(String root, String toFile, OnCopyListener listener) {
+            this.root = root;
+            this.toFile = toFile;
+            this.listener = listener;
+        }
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            File file = new File(root);
+            long total = getFileNumber(file);
+            long curNumber = 0;
+            Map<String,String> upgradeInformation = new HashMap<>();
+            if (listener != null){
+                listener.onStart(total);
+            }
+            copyFile(file,toFile,total,curNumber,upgradeInformation,listener);
+            if (listener != null){
+                listener.onFinish(upgradeInformation);
+            }
+            Map<String,String> hashMap = getCheckHash(file);
+            File orgFile = null;
+            if (listener != null){
+                orgFile = new File(listener.onCheckUDStart());
+            }
+            if (orgFile == null || !orgFile.exists()){
+                return null;
+            }
+            writeFile(upgradeInformation);
+            Map<String,String> checkMap = getCheckValue(orgFile);
+            String oValue;
+            String hValue;
+            for (String key : checkMap.keySet()) {
+                oValue = checkMap.get(key);
+                hValue = hashMap.get(key);
+                if (oValue != null){
+                    if (!oValue.equals(hValue)){
+                        listener.onCheckFinish(upgradeInformation);
+                        return null;
+                    }
+                }else {
+                    boolean b = true;
+                    for (String sk:hashMap.keySet()){
+                        if (sk.equalsIgnoreCase(key)){
+                            oValue = checkMap.get(key);
+                            hValue = hashMap.get(key);
+                            if (!oValue.equals(hValue)){
+                                b = false;
+                            }
+                        }
+                    }
+                    if (b){
+                        listener.onCheckFinish(upgradeInformation);
+                        return null;
+                    }
+                }
+            }
+            listener.onCheckFinish(null);
+            return null;
+        }
+
+        private void writeFile( Map<String,String> map ){
+            if (map == null){
+                return;
+            }
+            File file = makeFilePath();
+            if (file == null){
+                return;
+            }
+            StringBuilder buffer = new StringBuilder();
+            String value;
+            for (String key : map.keySet()) {
+                value = map.get(key);
+                buffer.append(key);
+                buffer.append(" = ");
+                buffer.append(value);
+                buffer.append("\r\n");
+                System.out.println(key + ":" + map.get(key));
+            }
+            String msg = buffer.toString();
+            try {
+                FileOutputStream outputStream = new FileOutputStream(file);
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
+                writer.write(msg);
+                writer.close();
+            } catch(Exception exception) {
+                Log.d(TAG,exception.getMessage());
+            }
+        }
+
+        private File makeFilePath(){
+            File file = new File(getSDString() + "/UpdateLog.txt");
+            if (!file.exists()){
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return file;
+        }
+
+        /**
+         * MD5校验
+         * 获取复制后文件的MD5 值
+         * @param file file
+         * */
+        private Map<String,String> getCheckHash(File file ){
+            Map<String,String> hashMap = new HashMap<>();
+            if (file.isDirectory()){
+                for (File childFile : file.listFiles()){
+                    hashMap.putAll(getCheckHash(childFile));
+                }
+            }else if (file.isFile()){
+                String path = file.getAbsolutePath();
+                String newPath = path.replaceAll(root,toFile);
+                String key = path.replaceAll(root,"/");
+                String value ;
+                File f = new File(newPath);
+                if (!f.exists()){
+                    value = "";
+                }else {
+                    value = FileUtils.getFileMD5(file);
+                }
+                hashMap.put(key,value);
+            }
+            return hashMap;
+        }
+
+        /**
+         * 获取配置的键值对
+         * */
+        private Map<String,String> getCheckValue(File file){
+            Map<String,String> map = new HashMap<>();
+            if (file.isDirectory()) {
+                Log.d("TestFile", "The File doesn't not exist.");
+            } else {
+                try {
+                    InputStream instream = new FileInputStream(file);
+                    if (instream != null) {
+                        InputStreamReader inputreader = new InputStreamReader(instream);
+                        BufferedReader buffreader = new BufferedReader(inputreader);
+                        String line;
+                        String key;
+                        String key1;
+                        String value;
+                        //分行读取
+                        while (( line = buffreader.readLine()) != null) {
+                            if (line.contains(",")){
+                                key1 = line.substring(0,line.indexOf(","));
+                                key = key1.replace("\\","/");
+                                value = line.substring(line.indexOf(",")+1,line.length());
+                                map.put(key,value);
+                            }
+                        }
+                        instream.close();
+                    }
+                } catch (java.io.FileNotFoundException e) {
+                    Log.d("TestFile", "The File doesn't not exist.");
+                } catch (IOException e) {
+                    Log.d("TestFile", e.getMessage());
+                }
+            }
+            return map;
+        }
+    }
+
+    @SuppressLint("StaticFieldLeak")
+    private class CopyUDTask extends AsyncTask<Void, Integer, Void> {
+        private String root;
+        private String toFile;
+        private OnCopyListener listener;
+
+
+        CopyUDTask(String root, String toFile,OnCopyListener listener) {
+            this.root = root;
+            this.toFile = toFile;
+            this.listener = listener;
+        }
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            try {
+                File file = new File(root);
+                long total = getFileNumber(file);
+                long curNumber = 0;
+                Map<String,String> hashRoot= new HashMap<>();
+                Map<String, String> upgradeInformation = new HashMap<>();
+                if (listener != null) {
+                    listener.onStart(total);
+                }
+                if (!file.exists()){
+                    return null;
+                }
+                if (!toFile.contains("RtNavi")){
+                    toFile += "RtNavi/";
+                }
+                copyUDFile(file, toFile, total, curNumber, upgradeInformation,hashRoot, listener);
+                if (listener != null){
+                    listener.onFinish(upgradeInformation);
+                }
+                File orgFile = null;
+                String name = "";
+                if (listener != null){
+                    name = listener.onCheckUSBStart();
+                }
+                String sourcePath = udPath + "RtNavi/" + name;
+                orgFile = new File(sourcePath);
+                mView.onToast(sourcePath);
+                if (!orgFile.exists()){
+                    return null;
+                }
+                writeFile2(hashRoot);
+                writeFile(upgradeInformation);
+                Map<String,String> checkMap = getCheckValue(orgFile);
+                String oValue;
+                String hValue;
+                for (String key : checkMap.keySet()) {
+                    oValue = checkMap.get(key);
+                    hValue = hashRoot.get(key);
+                    if (oValue != null){
+                        if (!oValue.equals(hValue)){
+                            listener.onCheckFinish(upgradeInformation);
+                            return null;
+                        }else {
+//                            try {
+//                                boolean b = true;
+//                                for (String sk:hashRoot.keySet()){
+//                                    if (sk.equalsIgnoreCase(key1)){
+//                                        hValue = checkMap.get(key1);
+//                                        if (!oValue.equals(hValue)){
+//                                            b = false;
+//                                        }
+//                                    }
+//                                }
+//
+//                                if (b){
+//                                    listener.onCheckFinish(upgradeInformation);
+//                                    return null;
+//                                }
+//                            }catch (Exception e){
+//                                mView.onToast(e.getMessage());
+//                            }
+                        }
+                    }
+                }
+                listener.onCheckFinish(null);
+            }catch (IOException e) {
+                mView.onToast(e.getMessage());
+            }
+            return null;
+        }
+
+        private UsbFile getHashFine(UsbFile file,String name) throws IOException {
+            for (UsbFile f:file.listFiles()){
+                if (f.isDirectory()){
+                    for (UsbFile ff : f.listFiles()){
+                        getHashFine(ff,name);
+                    }
+                }else {
+                    if (name.equals(f.getName())){
+                        return f;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private void writeFile2( Map<String,String> map ){
+            if (map == null){
+                return;
+            }
+            File file = makeFilePath1();
+            if (file == null){
+                return;
+            }
+            StringBuilder buffer = new StringBuilder();
+            String value;
+            for (String key : map.keySet()) {
+                value = map.get(key);
+                buffer.append(key);
+                buffer.append(" = ");
+                buffer.append(value);
+                buffer.append("\r\n");
+                System.out.println(key + ":" + map.get(key));
+            }
+            String msg = buffer.toString();
+            try {
+                FileOutputStream outputStream = new FileOutputStream(file);
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
+                writer.write(msg);
+                writer.close();
+            } catch(Exception exception) {
+                Log.d(TAG,exception.getMessage());
+            }
+        }
+
+        private void writeFile( Map<String,String> map ){
+            if (map == null){
+                return;
+            }
+            File file = makeFilePath();
+            if (file == null){
+                return;
+            }
+            StringBuilder buffer = new StringBuilder();
+            String value;
+            for (String key : map.keySet()) {
+                value = map.get(key);
+                buffer.append(key);
+                buffer.append(" = ");
+                buffer.append(value);
+                buffer.append("\r\n");
+                System.out.println(key + ":" + map.get(key));
+            }
+            String msg = buffer.toString();
+            try {
+                FileOutputStream outputStream = new FileOutputStream(file);
+                BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream));
+                writer.write(msg);
+                writer.close();
+            } catch(Exception exception) {
+                Log.d(TAG,exception.getMessage());
+            }
+        }
+
+        private File makeFilePath(){
+            File file = new File(getSDString() + "/UpdateLog.txt");
+            if (!file.exists()){
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return file;
+        }
+
+        private File makeFilePath1(){
+            File file = new File(getSDString() + "/UpdateLog1.txt");
+            if (!file.exists()){
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return file;
+        }
+
+        /**
+         * MD5校验
+         * 获取复制后文件的MD5 值
+         * @param file file
+         * */
+        private Map<String,String> getCheckHash(File file ){
+            Map<String,String> hashMap = new HashMap<>();
+            if (file.isDirectory()){
+                for (File childFile : file.listFiles()){
+                    hashMap.putAll(getCheckHash(childFile));
+                }
+            }else if (file.isFile()){
+                String path = file.getAbsolutePath();
+                String newPath = path.replaceAll(root,toFile);
+                String key = path.replaceAll(root,"/");
+                String value ;
+                File f = new File(newPath);
+                if (!f.exists()){
+                    value = "";
+                }else {
+                    value = FileUtils.getFileMD5(file);
+                }
+                hashMap.put(key,value);
+            }
+            return hashMap;
+        }
+
+
+        /**
+         * 获取配置的键值对
+         * */
+        private Map<String,String> getCheckValue(File file){
+            Map<String,String> map = new HashMap<>();
+            if (file.isDirectory()) {
+                Log.d("TestFile", "The File doesn't not exist.");
+            } else {
+                try {
+                    InputStream instream = new FileInputStream(file);
+                    if (instream != null) {
+                        InputStreamReader inputreader = new InputStreamReader(instream);
+                        BufferedReader buffreader = new BufferedReader(inputreader);
+                        String line;
+                        String key;
+                        String value;
+                        //分行读取
+                        while (( line = buffreader.readLine()) != null) {
+                            if (line.contains(",")){
+                                key = line.substring(0,line.indexOf(","));
+//                                key = key1.replace("\\","/");
+                                value = line.substring(line.indexOf(",")+1,line.length());
+                                map.put(key,value);
+                            }
+                        }
+                        instream.close();
+                    }
+                } catch (java.io.FileNotFoundException e) {
+                    Log.d("TestFile", "The File doesn't not exist.");
+                } catch (IOException e) {
+                    Log.d("TestFile", e.getMessage());
+                }
+            }
+            return map;
+        }
+
+        private Map<String,String> getCheckUSBValue(UsbFile file){
+            Map<String,String> map = new HashMap<>();
+            if (file.isDirectory()) {
+                Log.d("TestFile", "The File doesn't not exist.");
+            } else {
+                try {
+                    InputStream instream = new UsbFileInputStream(file);
+                    if (instream != null) {
+                        InputStreamReader inputreader = new InputStreamReader(instream);
+                        BufferedReader buffreader = new BufferedReader(inputreader);
+                        String line;
+                        String key;
+                        String value;
+                        //分行读取
+                        while (( line = buffreader.readLine()) != null) {
+                            if (line.contains(",")){
+                                key = line.substring(0,line.indexOf(","));
+//                                key = key1.replace("\\","/");
+                                value = line.substring(line.indexOf(",")+1,line.length());
+                                map.put(key,value);
+                            }
+                        }
+                        instream.close();
+                    }
+                } catch (java.io.FileNotFoundException e) {
+                    Log.d("TestFile", "The File doesn't not exist.");
+                } catch (IOException e) {
+                    Log.d("TestFile", e.getMessage());
+                }
+            }
+            return map;
+        }
+
+
+        private UsbFile searchSourceFile(UsbFile file,String path) throws IOException {
+            if (TextUtils.isEmpty(path) || file == null ){
+                return null;
+            }
+//            if (!path.startsWith("/")){
+            String filePath = path.substring(1,path.length());
+            int index = filePath.indexOf("/");
+            if (filePath.indexOf("/") > 0){
+                index = filePath.indexOf("/");
+            }
+            String fileName = filePath.substring(0,index > 0 ? index : filePath.length());
+            for (UsbFile f : file.listFiles()){
+                if (fileName.equals(f.getName())){
+                    if (index > 0 ){
+                        return searchSourceFile(f,filePath.substring(index,filePath.length()));
+                    }else {
+                        return f;
+                    }
+                }
+            }
+//            }
+            return null;
+        }
+    }
+
+
 
 }
